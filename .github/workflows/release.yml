@@ -72,9 +72,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = $env:GITHUB_REF_NAME
-          # 标题用中文「番茄钟vX.Y.Z」。标题走 API 的 JSON 字段，不受附件名那条
-          # ASCII 限制（附件名非 ASCII 会被 GitHub 静默剥成 default.exe）。
-          $title = "番茄钟$tag"
+          # 标题用中文「番茄钟 vX.Y.Z」（中英之间留一个空格）。标题走 API 的 JSON 字段，
+          # 不受附件名那条 ASCII 限制（附件名非 ASCII 会被 GitHub 静默剥成 default.exe）。
+          $title = "番茄钟 $tag"
           $assets = @("dist\pomodoro-timer.exe", "dist\pomodoro-timer-faststart.zip")
           $notes = "dist\release_notes.md"
           gh release view $tag *> $null
