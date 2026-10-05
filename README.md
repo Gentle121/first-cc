@@ -13,14 +13,15 @@
 | `pomodoro-timer-faststart.zip` | 11 MB 压缩包 | 约 0.25 秒 | 自己常用，放桌面/任务栏 |
 
 两者功能完全一样，差别只在于 `--onefile` 每次启动都要把内容解压到临时目录，所以慢。
-压缩包解压出来是 `番茄钟-快速启动/` 文件夹，**要整个目录一起留着**，单独把里面的 exe
-拿出来是不能用的。
+压缩包解压出来是 `pomodoro-timer-faststart/` 文件夹，**要整个目录一起留着**，单独把里面的
+exe 拿出来是不能用的。
 
 首次运行若被 Windows SmartScreen 拦下，点「更多信息」→「仍要运行」——exe 没有代码签名
 证书，不是文件有问题。
 
 > 附件名是英文的，因为 GitHub 会剥掉附件名里的非 ASCII 字符（中文名会被吞成
-> `default.exe`）。仓库里自己打包出来的产物仍是中文名 `番茄钟.exe`。
+> `default.exe`）。所以 Release 里的东西由 CI 用英文名重新打包（见下面「发版」），
+> 仓库里自己双击 `打包.bat` 出的产物仍然叫 `番茄钟.exe`。
 >
 > `dist/` 里是可随时重新生成的构建产物，**没有入库**，所以克隆下来是没有 exe 的——
 > 要 exe 去 Releases 下，要从源码跑看下一节。
@@ -60,8 +61,24 @@ python -m PyInstaller --noconfirm --onefile --windowed --name 番茄钟 pomodoro
 python -m PyInstaller --noconfirm --onedir  --windowed --name 番茄钟-快速启动 pomodoro.py
 ```
 
-产物在 `dist/`（已被 `.gitignore` 排除，不会进仓库）。改完代码想让别人拿到新的 exe，
-把 `dist/番茄钟.exe` 传到 GitHub Releases 上，附件名得用英文——见上面那段的说明。
+产物在 `dist/`（已被 `.gitignore` 排除，不会进仓库）。
+
+## 发版
+
+想让别人拿到新 exe，不用手动打包上传——打个 tag 推上去就行：
+
+```bash
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+`.github/workflows/release.yml` 会在 windows runner 上跑逻辑测试、重新打包两份、
+建好 Release 并把 `pomodoro-timer.exe` 和 `pomodoro-timer-faststart.zip` 传上去，
+说明文字由 GitHub 按提交记录自动生成。命名规则见上面那段：CI 里一律用英文名，
+省掉手动改名这一步。
+
+跑挂了在 Actions 页面点 **Re-run jobs** 重跑即可，ref 还是原来那个标签，不会发错版本；
+若 Release 已经存在，重跑是覆盖同名附件而不是报错。
 
 ## 测试
 

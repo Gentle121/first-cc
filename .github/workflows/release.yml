@@ -1,0 +1,68 @@
+name: 打 tag 自动发 Release
+
+# 推 v* 标签 = 发版：自动跑测试、打包、建 Release、传附件。
+# 失败后想重跑：在 Actions 页面点 “Re-run jobs”，ref 仍是原来那个标签，不会发错版本。
+on:
+  push:
+    tags:
+      - "v*"
+
+# 建 Release / 传附件需要写权限，其余保持默认只读
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+
+      - name: 跑状态机测试
+        run: python test_pomodoro.py
+
+      # 这里刻意用英文名打包（本地 打包.bat 仍然出中文名）：GitHub 会剥掉附件名里的
+      # 非 ASCII 字符，中文名会被静默吞成 default.exe；顺带让 zip 内部也不出现中文路径。
+      - name: 打包单文件版
+        run: python -m PyInstaller --noconfirm --onefile --windowed --name pomodoro-timer pomodoro.py
+
+      - name: 打包快速启动版
+        run: python -m PyInstaller --noconfirm --onedir --windowed --name pomodoro-timer-faststart pomodoro.py
+
+      # exe 是 --windowed 打的，控制台里看不到任何输出；用 --selftest 写出的文件确认
+      # 它真能启动（通知弹不出来只记在文件里，不算构建失败）
+      - name: 冒烟测试（确认 exe 能启动）
+        shell: pwsh
+        run: |
+          $exe = "dist\pomodoro-timer.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList "--selftest" -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw "$exe --selftest 超时未退出" }
+          $log = Join-Path $env:TEMP "pomodoro_tk\selftest.txt"
+          if (-not (Test-Path $log)) { throw "exe 没写出 selftest.txt，说明它根本没跑起来" }
+          Get-Content $log
+
+      - name: 压缩快速启动版
+        shell: pwsh
+        run: Compress-Archive -Path "dist\pomodoro-timer-faststart" -DestinationPath "dist\pomodoro-timer-faststart.zip" -Force
+
+      - name: 建 Release 并上传附件
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $assets = @("dist\pomodoro-timer.exe", "dist\pomodoro-timer-faststart.zip")
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            # 同名 Release 已存在（重跑或补传），覆盖附件即可
+            gh release upload $tag $assets --clobber
+          } else {
+            gh release create $tag $assets --title $tag --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "创建 Release / 上传附件失败" }

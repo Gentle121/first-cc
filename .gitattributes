@@ -3,5 +3,8 @@
 # 之前 打包.bat 就因此从没真正执行过 PyInstaller。这里锁定换行，避免克隆后复发。
 *.bat text eol=crlf
 
+# workflow / YAML 统一 LF，跟 GitHub Actions 上的习惯一致
+*.yml text eol=lf
+
 # 图片按二进制处理，不做任何换行转换
 *.png binary
