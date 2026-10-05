@@ -10,11 +10,11 @@ if errorlevel 1 (
 
 echo.
 echo === 打包单文件版 dist\番茄钟.exe ===
-python -m PyInstaller --noconfirm --onefile --windowed --name 番茄钟 pomodoro.py || goto :fail
+python -m PyInstaller --add-data "assets;assets" --noconfirm --onefile --windowed --name 番茄钟 pomodoro.py || goto :fail
 
 echo.
 echo === 打包文件夹版 dist\番茄钟-快速启动\ ===
-python -m PyInstaller --noconfirm --onedir --windowed --name 番茄钟-快速启动 pomodoro.py || goto :fail
+python -m PyInstaller --add-data "assets;assets" --noconfirm --onedir --windowed --name 番茄钟-快速启动 pomodoro.py || goto :fail
 
 echo.
 echo === 自检 ===

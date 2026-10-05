@@ -42,6 +42,7 @@ import tempfile      # 拿临时目录，存放通知用的 .ps1 脚本
 import threading     # 声音和通知丢到后台线程，避免卡住界面
 import time          # monotonic 单调时钟，计时精度的关键
 import tkinter as tk # GUI 框架
+import tkinter.font as tkfont  # 查本机装了哪些字体族（见下面"字体"一节）
 
 
 # ============================================================================
@@ -62,18 +63,27 @@ TICK_MS = 80                  # 界面刷新间隔（毫秒）。80ms ≈ 每秒
 # 色卡：主色 #C65A4A / 背景 #F7F2EC / 辅助 #EAE3DB / 浅辅助 #F1E8E0
 #       高亮 #F8DCCF / 弱化 #D9D2CC / 文本 #6F655E / 分割线 #E5E0DA
 COL_BG = "#F7F2EC"        # 窗口背景、各容器底色（背景）
-COL_TRACK = "#D9D2CC"     # 圆环底槽 / 未点亮的番茄圆点（弱化）
-COL_TEXT = "#6F655E"      # 主文字：时间数字（文本）
-COL_MUTED = COL_TEXT      # 次要文字：标题、重置/跳过。色卡里没有比"文本"更浅的
-                          # 可读色，所以直接复用"文本"，靠悬停变主色来区分
-COL_LINE = "#E5E0DA"      # 两个文字按钮中间的分隔点（分割线 / 轮廓）
-COL_HIGHLIGHT = "#F8DCCF" # 主按钮鼠标悬停时的底色（高亮）
-COL_FOCUS = "#C65A4A"     # 专注（主色）
+COL_TRACK = "#D9D2CC"     # 圆环底槽 / 未点亮的番茄段 / 主按钮常态描边（弱化）
+COL_TEXT = "#6F655E"      # 全部文字：时间、阶段名、按钮（文本）。比它更浅的色对背景
+                          # 都只有 1.1~1.35 的对比度，当文字用不了，所以不设"次要文字色"
+COL_LINE = "#E5E0DA"      # 分割线 / 轮廓 —— 目前**无引用**。它对背景只有 1.18:1，
+                          # 原来那个"·"分隔点其实等于没画，已删。留着当色板文档
+COL_AUX = "#EAE3DB"       # 辅助 —— 目前**无引用**，理由同上（对背景 1.14:1）。
+                          # 这两个色是卡里最淡的，硬派活只会得到一块看不见的色块
+COL_LIGHT = "#F1E8E0"     # 浅辅助：主按钮常态底板（对背景 1.09:1，形状靠弱化描边勾出来）
+COL_HIGHLIGHT = "#F8DCCF" # 主按钮鼠标悬停时的底板（高亮）
+COL_FOCUS = "#C65A4A"     # 专注（主色）：**只给进度弧**，外加已点亮的番茄段和主按钮的
+                          # 悬停描边。静态家具不占主色，焦点才留得住
 COL_BREAK = COL_TEXT      # 短休息：复用"文本"
 COL_LONG = COL_TEXT       # 长休息：复用"文本"
 # 关于休息阶段为什么是"文本灰"而不是绿/蓝：色卡是**单强调色**板，只有一个彩色
 # （主色 #C65A4A），没有绿也没有蓝。严格照卡就只能拿中性色来标休息，于是形成
 # "红 = 正在专注 / 灰 = 休息中"的语义；短休和长休颜色因此相同，靠阶段名和时长区分。
+#
+# 对比度实况（WCAG，都相对背景 #F7F2EC）：文本 5.10:1 / 主色 3.80:1（只够大字号）/
+# 弱化 1.34:1 / 分割线 1.18:1 / 高亮 1.17:1 / 辅助 1.14:1 / 浅辅助 1.09:1。
+# 即：**除「文本」和「主色」外，其余 6 个色对背景都只有"形状级"的对比**，做不出
+# 看得见的底板。界面要立得住只能靠主色和形状（面积、描边），不能靠层层叠色块。
 
 # ---------------------------------------------------------------- 阶段定义表
 # 把"一个阶段需要的全部信息"打包成一张表，好处是逻辑代码里不用写 if/else 分支：
@@ -86,6 +96,73 @@ PHASES = {
 }
 
 
+# ---------------------------------------------------------------- 资源
+# 圆环区的打底图（一张浅色柔光图，给界面一点纵深，不再是一块死板的纯色）。
+# 打包成 --onefile 后，附带的资源会被解到临时目录 sys._MEIPASS；源码运行时它就在
+# 本文件旁边的 assets/ 下。两种情况根目录不同，统一交给 _resource_path() 拼。
+RING_BG_REL = ("assets", "ring_bg.png")
+
+
+def _resource_path(*parts: str) -> str:
+    """定位随程序分发的资源。打包时根是 sys._MEIPASS，否则是源码所在目录。"""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, *parts)
+
+
+# ---------------------------------------------------------------- 字体
+# 中文要交给正经的 CJK 字体族。原来写死 "Segoe UI"，中文全靠系统 fallback，中英混排的
+# 字号和基线都不齐。优先用「微软雅黑 UI」：它的西文部分本来就是照 Segoe UI 做的，所以
+# 数字观感不变——实测 52pt bold 下 "25:00" / "24:59" / "00:00" 宽度都是 192px（等宽），
+# 秒数跳动时不会左右抖。
+_FONT_CANDIDATES = ("Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑", "Segoe UI")
+_font_family = None     # 解析成功后就缓存；None 表示还没成功解析过
+_font_objects = {}      # 带效果（下划线）的 Font 对象缓存，元组形式的字体表达不了
+
+
+def _resolve_family() -> str:
+    """挑一个本机可用的界面字体族。
+
+    tkinter.font.families() 要求已经存在 Tk root，否则会抛异常——本函数只会被控件
+    构造函数调用，而控件都在 PomodoroApp._build_ui() 里建，那时 root 一定在。
+    异常分支刻意**不写缓存**：万一将来有人在 root 之前调了一次，缓存住错误值就永久
+    污染了；不写缓存，等 root 就绪后还能正确解析。
+    """
+    global _font_family
+    if _font_family is not None:
+        return _font_family
+    try:
+        available = {name.lower() for name in tkfont.families()}
+        for name in _FONT_CANDIDATES:
+            if name.lower() in available:
+                _font_family = name
+                return name
+        # 候选一个都没命中（英文版 Windows Server 上很可能如此）：
+        # 退而问 Tk 自己的默认字体，它一定存在
+        _font_family = tkfont.nametofont("TkDefaultFont").actual("family")
+    except Exception:
+        return "Segoe UI"      # 没有 root / Tk 环境异常时的兜底，不写缓存
+    return _font_family
+
+
+def ui_font(size: int, weight: str = "normal"):
+    """界面统一字体。
+
+    字体族是运行时解析的，所以**不能**把它写成控件的参数默认值——参数默认值在模块
+    导入时就求值了，那时还没有 Tk root。
+    """
+    return (_resolve_family(), size, weight)
+
+
+def ui_font_obj(size: int, underline: bool = False):
+    """字体对象版。tk 的字体元组只能表达 family/size/weight/slant，下划线必须用
+    tkinter.font.Font 对象；同一个组合只造一次。"""
+    key = (size, underline)
+    if key not in _font_objects:
+        _font_objects[key] = tkfont.Font(family=_resolve_family(), size=size,
+                                         underline=underline)
+    return _font_objects[key]
+
+
 # ============================================================================
 # 2. 控件层
 # ============================================================================
@@ -95,62 +172,73 @@ class PillButton(tk.Canvas):
     为什么继承 Canvas 自绘？因为 tk.Button 做不出圆角，Windows 上还会强制
     套一层系统主题边框，跟这套浅色界面完全不搭。用 Canvas 画就完全可控。
 
-    形状 = 左半圆 + 右半圆 + 中间矩形，三段同色拼起来正好是一个胶囊。
-    下面用 height 当直径，所以圆角的半径恒等于 height/2，圆角永远完美贴合。
+    形状 = 左半圆 + 右半圆 + 中间矩形，三段拼起来是一个胶囊（半径取 height/2，
+    圆角永远完美贴合）。这个拼法叠了**两层**：外层三段画描边色，内层三段（四周各
+    内缩 BORDER 像素）画底板色盖住内部，露出来的就只有一圈等宽的描边。比给三段各自
+    加 outline 干净——那样会在半圆和矩形的接缝处画出两道内部竖线。
+
+    配色上主按钮是刻意"安静"的：常态只有浅辅助底板 + 弱化描边，悬停才换成高亮底板
+    + 主色描边。主色要留给"正在变"的进度弧，静态家具不该跟它抢。
     """
 
-    def __init__(self, parent, text, command, width=210, height=54,
-                 fill=COL_FOCUS, fg=COL_BG, font=("Segoe UI", 14, "bold")):
+    BORDER = 2      # 描边宽度（px）
+
+    def __init__(self, parent, text, command, width=210, height=54, font=None):
         # highlightthickness=0 去掉 Canvas 默认的焦点边框，bd=0 去掉边框
         super().__init__(parent, width=width, height=height, bg=COL_BG,
                          highlightthickness=0, bd=0, cursor="hand2")
         self._command = command          # 点击时调用的函数
-        self._fill = fill                # 常态底色（随阶段变：专注主色 / 休息文本色）
-        self._fg = fg                    # 常态文字色（胶囊底色偏深，所以用浅色字）
+        # 字体族要运行时解析（见 _resolve_family），所以不能写成参数默认值
+        font = font or ui_font(14, "bold")
 
-        r = height / 2                   # 圆角半径 = 高度的一半
-        self._shape = [                  # 三块拼图，统一放在这个列表里方便整体改色
-            #            左上角      右下角
-            self.create_oval(0, 0, height, height, fill=fill, outline=""),          # 左半圆
-            self.create_oval(width - height, 0, width, height, fill=fill, outline=""),  # 右半圆
-            self.create_rectangle(r, 0, width - r, height, fill=fill, outline=""),  # 中间补齐
+        b = self.BORDER
+        r = height / 2                   # 外层圆角半径 = 高度的一半
+        self._edge = [                   # 外层：描边色
+            #            左上角              右下角
+            self.create_oval(0, 0, height, height, fill=COL_TRACK, outline=""),             # 左半圆
+            self.create_oval(width - height, 0, width, height, fill=COL_TRACK, outline=""), # 右半圆
+            self.create_rectangle(r, 0, width - r, height, fill=COL_TRACK, outline=""),     # 中间补齐
         ]
-        # 文字单独作为一层盖在三块图形之上
-        self._label = self.create_text(width / 2, height / 2, text=text, fill=fg, font=font)
+        # 内层：底板色，四周内缩 b。注意内层矩形的 x 范围和外层**完全相同**
+        # （b + (height/2 - b) 恒等于 height/2），这不是巧合而是胶囊几何的必然；
+        # 内层半圆也因此正好是外层半圆向内偏 b 的平行曲线，所以描边处处等宽。
+        self._shell = [
+            self.create_oval(b, b, height - b, height - b, fill=COL_LIGHT, outline=""),
+            self.create_oval(width - height + b, b, width - b, height - b, fill=COL_LIGHT, outline=""),
+            self.create_rectangle(r, b, width - r, height - b, fill=COL_LIGHT, outline=""),
+        ]
+        # 文字单独作为一层盖在所有图形之上。字色恒为「文本」——底板一直是浅色，
+        # 不需要像以前那样跟着悬停换字色
+        self._label = self.create_text(width / 2, height / 2, text=text,
+                                       fill=COL_TEXT, font=font)
 
         # 事件绑定：tk.Canvas 不像 Button 那样自带 click 事件，要自己绑鼠标事件
         self.bind("<Button-1>", lambda _e: self._command())            # 左键点击
         self.bind("<Enter>", lambda _e: self._hover_on())              # 鼠标移入 → 高亮
         self.bind("<Leave>", lambda _e: self._hover_off())             # 鼠标移出 → 复原
 
-    def _paint(self, color):
-        """把三块拼图统一改成指定颜色。"""
-        for item in self._shape:
-            self.itemconfigure(item, fill=color)
+    def _paint(self, edge, face):
+        """外层换描边色、内层换底板色。"""
+        for item in self._edge:
+            self.itemconfigure(item, fill=edge)
+        for item in self._shell:
+            self.itemconfigure(item, fill=face)
 
     def _hover_on(self):
-        """悬停态：底色换成色卡的"高亮"，文字同时换成"文本"色。
+        """悬停态：描边换成主色。
 
-        连文字一起换，是因为高亮色 #F8DCCF 本身很浅，
-        常态那层浅色字盖上去会看不清，必须配深色字才够对比。
+        真正让人"看出悬停"的就是这道主色描边（对背景 3.80:1），底板那点色差指望不上——
+        浅辅助和高亮对背景分别只有 1.09:1 和 1.17:1，肉眼几乎分不出来。悬停属于
+        "正在回应你"的瞬时状态，主色用在这里不破坏"主色归进度弧"的规矩。
         """
-        self._paint(COL_HIGHLIGHT)
-        self.itemconfigure(self._label, fill=COL_TEXT)
+        self._paint(COL_FOCUS, COL_HIGHLIGHT)
 
     def _hover_off(self):
-        """移开鼠标：底色和文字都还原成常态。"""
-        self._paint(self._fill)
-        self.itemconfigure(self._label, fill=self._fg)
+        """移开鼠标：描边和底板都还原成常态。"""
+        self._paint(COL_TRACK, COL_LIGHT)
 
-    def set(self, text: str = None, fill: str = None):
-        """外部更新按钮：改文字、改颜色（阶段切换时调用）。
-
-        两个参数都可选、都可单独传，所以调用方能只改文字不改色，反之亦然。
-        """
-        # 悬停底色恒为色卡的"高亮"，与阶段无关；换色时只需更新常态底色。
-        if fill and fill != self._fill:      # 颜色真的变了才重绘，避免无谓刷新
-            self._fill = fill
-            self._paint(fill)
+    def set(self, text: str = None):
+        """外部更新按钮文字：开始 / 暂停 / 继续 三态切换时调用。"""
         if text is not None:
             self.itemconfigure(self._label, text=text)
 
@@ -160,18 +248,32 @@ class TextButton(tk.Label):
 
     用 Label 而不是 Button，是因为 Label 在 Windows 上不会套系统主题边框，
     背景色能真正透明（设成和父容器一致即可），视觉上就是纯文字。
+
+    悬停反馈做成**加下划线**而不是换色或加底板，是被色卡逼出来的唯一解：
+      * 换主色 → 11pt 下主色对背景只有 3.80:1，不达普通字号 AA 的 4.5:1；
+      * 加底板 → 辅助/浅辅助/弱化三色自身对背景只有 1.09~1.34:1（板子看不见），
+        而板上 11pt 小字最高也才 4.69:1，其中辅助色是 4.462:1 还差一点点。
+    这张卡唯一的高对比资产就是文字色本身（5.10:1），所以把反馈放在字形上，
+    颜色一个字节都不动。
     """
 
+    # 两个字体对象懒加载缓存。**不能**写成类属性——那会在模块导入时求值，
+    # 而 tkfont.Font() 需要已存在的 Tk root，导入期没有，会直接抛异常。
+    _idle_font = None
+    _hover_font = None
+
     def __init__(self, parent, text, command):
+        cls = TextButton
+        if cls._idle_font is None:       # 首次构造时才解析，此时 root 已存在
+            cls._idle_font = ui_font_obj(11)
+            cls._hover_font = ui_font_obj(11, underline=True)
         # bg 必须和父容器颜色一致，才能"隐形"融入背景
-        self._fg = COL_MUTED             # 常态文字色，悬停结束后要还原回它
-        super().__init__(parent, text=text, fg=self._fg, bg=COL_BG,
-                         cursor="hand2", font=("Segoe UI", 11))
+        super().__init__(parent, text=text, fg=COL_TEXT, bg=COL_BG,
+                         cursor="hand2", font=cls._idle_font)
         self.bind("<Button-1>", lambda _e: command())
-        # 常态与悬停都在色卡内：常态"文本"，悬停切到"主色"给一点反馈。
-        # （色卡里没有比"文本"更浅的可读色，所以用换色而不是深浅变化来提示。）
-        self.bind("<Enter>", lambda _e: self.config(fg=COL_FOCUS))     # 悬停 → 主色
-        self.bind("<Leave>", lambda _e: self.config(fg=self._fg))      # 移开 → 常态
+        # 只切字体对象，字色/背景一律不动
+        self.bind("<Enter>", lambda _e: self.config(font=cls._hover_font))   # 悬停 → 加下划线
+        self.bind("<Leave>", lambda _e: self.config(font=cls._idle_font))    # 移开 → 常态
 
 
 # ============================================================================
@@ -352,13 +454,11 @@ class PomodoroApp:
     # ------------------------------------------------------------------ 界面搭建
     def _build_ui(self):
         """一次性把所有控件建好。建好之后大部分控件是复用的，只改属性不重建。"""
-        # wrap 是主容器，用 padx/pady 留出四周留白
+        # wrap 是主容器，用 padx/pady 留出四周留白。
+        # 这里不要标题——窗口标题栏已经写着"番茄钟"了，界面里再写一遍是冗余标签，
+        # 白白占掉一行高度。第一眼该看到的就是圆环。
         wrap = tk.Frame(self.root, bg=COL_BG)
-        wrap.pack(fill="both", expand=True, padx=26, pady=24)
-
-        # 顶部小标题
-        tk.Label(wrap, text="番茄钟", fg=COL_MUTED, bg=COL_BG,
-                 font=("Segoe UI", 12)).pack(pady=(0, 14))
+        wrap.pack(fill="both", expand=True, padx=24, pady=24)
 
         # ---------------- 圆环（核心视觉） ----------------
         s, w, r = self.RING_SIZE, self.RING_WIDTH, self.RING_RADIUS
@@ -367,6 +467,17 @@ class PomodoroApp:
         c.pack()
         self.cx = self.cy = s / 2      # 圆心坐标（正方形画布，所以 x=y=边长/2）
         self.ring_w = w
+
+        # 打底图：Canvas 里「先创建的在下层」，所以它必须第一个 create，才铺在圆环底下。
+        # 用 Tk 自带的 PhotoImage 读 PNG（8.6+ 原生支持），不引入 Pillow，守住零依赖。
+        # 自持有引用：PhotoImage 一旦被 GC，图会当着用户的面消失。任何异常都静默跳过，
+        # 退回纯色 COL_BG —— 一张背景图绝不能拖垮计时。
+        self._ring_bg = None
+        try:
+            self._ring_bg = tk.PhotoImage(file=_resource_path(*RING_BG_REL))
+            c.create_image(0, 0, image=self._ring_bg, anchor="nw")
+        except Exception:
+            self._ring_bg = None
 
         # 圆环的外接正方形，Tk 画圆/弧都是用"外接矩形"来定义的
         box = (self.cx - r, self.cy - r, self.cx + r, self.cy + r)
@@ -391,31 +502,39 @@ class PomodoroApp:
 
         # ④ 环内文字：大号时间 + 阶段名。整体略微偏上（cy-12），视觉重心更稳。
         self.time_text = c.create_text(self.cx, self.cy - 12, text="25:00",
-                                       fill=COL_TEXT, font=("Segoe UI", 52, "bold"))
+                                       fill=COL_TEXT, font=ui_font(52, "bold"))
+        # 阶段名用「文本」色而不是主色：主色对背景只有 3.80:1，13pt 不算大字号，
+        # 达不到 AA 的 4.5:1；「文本」是 5.10:1，达标。主色留给真正在变的进度弧。
         self.phase_text = c.create_text(self.cx, self.cy + 44, text="专注中",
-                                        fill=COL_FOCUS, font=("Segoe UI", 13, "bold"))
+                                        fill=COL_TEXT, font=ui_font(13, "bold"))
 
-        # ---------------- 番茄进度圆点 ----------------
-        dots = self.dots_canvas = tk.Canvas(wrap, width=120, height=20, bg=COL_BG,
+        # ---------------- 番茄进度段 ----------------
+        # 4 段圆头短线。用 create_line + capstyle="round" 而不是圆点：圆头线帽本身就是
+        # 胶囊形，同样 8px 宽能画出的面积比 ⌀10 的圆点大得多，而色卡的弱化色对背景只有
+        # 1.34:1，只能靠"面积"来补可见性。
+        #
+        # 几何：圆帽会在两端各外扩 width/2 = 4px，所以线段长 16 画出来是 24。
+        # 段长 24 + 间隙 8 = 中心距 32；整体跨度 3×32 + 24 = 120，正好等于画布宽。
+        dots = self.dots_canvas = tk.Canvas(wrap, width=120, height=8, bg=COL_BG,
                                             highlightthickness=0)
-        dots.pack(pady=(16, 18))
+        dots.pack(pady=(16, 20))
         self.dots = []
         for i in range(ROUNDS_BEFORE_LONG_BREAK):
-            # 把 4 个点整体居中：第 i 个点相对中心的偏移是 (i - 1.5) * 26
-            # i=0 → -39, i=1 → -13, i=2 → +13, i=3 → +39，左右对称，整体圆心在 x=60
-            x = 60 + (i - (ROUNDS_BEFORE_LONG_BREAK - 1) / 2) * 26
-            self.dots.append(dots.create_oval(x - 5, 5, x + 5, 15,   # 半径 5 的圆
-                                              fill=COL_TRACK, outline=""))
+            # 4 段中心 x = 60 + (i - 1.5) * 32 → 12 / 44 / 76 / 108，整体中心在 x=60
+            x = 60 + (i - (ROUNDS_BEFORE_LONG_BREAK - 1) / 2) * 32
+            self.dots.append(dots.create_line(x - 8, 4, x + 8, 4,   # y=4 让圆帽竖直占满 0–8
+                                              width=8, capstyle="round", fill=COL_TRACK))
 
         # ---------------- 按钮 ----------------
         self.btn_primary = PillButton(wrap, "开 始", self.toggle)
         self.btn_primary.pack()
 
         row = tk.Frame(wrap, bg=COL_BG)
-        row.pack(pady=(14, 0))
-        TextButton(row, "重置", self.reset).pack(side="left", padx=14)
-        tk.Label(row, text="·", fg=COL_LINE, bg=COL_BG).pack(side="left")   # 中间的分隔点
-        TextButton(row, "跳过", self.skip).pack(side="left", padx=14)
+        row.pack(pady=(16, 0))
+        # 两个文字按钮之间不再放"·"分隔点：那个点用分割线色，对背景 1.18:1，等于没画。
+        # 靠 padx 留白分隔就够了（18 比原来的 14 略宽，补上移走分隔点后损失的呼吸感）。
+        TextButton(row, "重置", self.reset).pack(side="left", padx=18)
+        TextButton(row, "跳过", self.skip).pack(side="left", padx=18)
 
     def _bind_keys(self):
         """绑定全局快捷键。
@@ -549,7 +668,7 @@ class PomodoroApp:
             if finished == "long_break":
                 # 长休息结束 = 一轮循环结束，番茄计数归零，开始新的一轮
                 # （放在这里而不是进入长休息时清零，是为了让长休息期间
-                #   底部 4 个圆点保持全亮，用户能看到"这轮我完成了 4 个"）
+                #   底部 4 段进度保持全亮，用户能看到"这轮我完成了 4 个"）
                 self.completed_focus = 0
 
             # 专注**不**自动开始：用户可能不在座位上，
@@ -569,8 +688,9 @@ class PomodoroApp:
             text = "继 续"
         else:
             text = "开 始"
-        # 按钮颜色也跟着阶段变（专注=主色红 / 休息=文本灰）
-        self.btn_primary.set(text=text, fill=meta["color"])
+        # 只换文字，不换颜色：主按钮是静态家具，不再随阶段变色，
+        # 主色要留给唯一在变的进度弧。（meta 仍要用，上面的 remaining 判断依赖它）
+        self.btn_primary.set(text=text)
 
     def _render(self):
         """把当前状态画到界面上。纯读状态、不写状态，可以随便调多少次。
@@ -593,7 +713,8 @@ class PomodoroApp:
         # 减去一个极小数就能把这种误差压回正常值。
         secs = max(0, math.ceil(self.remaining - 1e-9))
         self.canvas.itemconfigure(self.time_text, text=f"{secs // 60:02d}:{secs % 60:02d}")
-        self.canvas.itemconfigure(self.phase_text, text=meta["label"], fill=color)
+        # 阶段标签恒为「文本」色，不跟阶段变——见 _build_ui 里创建时的注释（主色不达标）
+        self.canvas.itemconfigure(self.phase_text, text=meta["label"], fill=COL_TEXT)
 
         # ---- 圆环进度 ----
         if progress <= 0:
@@ -625,10 +746,12 @@ class PomodoroApp:
             self.canvas.coords(self.cap, x - rc, y - rc, x + rc, y + rc)
             self.canvas.itemconfigure(self.cap, state="normal", fill=color)
 
-        # ---- 底部番茄圆点：前 completed_focus 个点亮 ----
+        # ---- 底部番茄进度段：前 completed_focus 段点亮 ----
+        # 点亮色恒为主色，**不**跟着阶段走（以前休息时会整体褪成灰）。这排段子记录的是
+        # "这一轮已经做完几个番茄"——那是成绩，不该因为切到休息就变淡。
         for i, dot in enumerate(self.dots):
             self.dots_canvas.itemconfigure(
-                dot, fill=color if i < self.completed_focus else COL_TRACK)
+                dot, fill=COL_FOCUS if i < self.completed_focus else COL_TRACK)
 
     # ------------------------------------------------------------------ 提醒
     def _notify(self, title: str, body: str, sound: str):

@@ -34,10 +34,10 @@ jobs:
       # 这里刻意用英文名打包（本地 打包.bat 仍然出中文名）：GitHub 会剥掉附件名里的
       # 非 ASCII 字符，中文名会被静默吞成 default.exe；顺带让 zip 内部也不出现中文路径。
       - name: 打包单文件版
-        run: python -m PyInstaller --noconfirm --onefile --windowed --name pomodoro-timer pomodoro.py
+        run: python -m PyInstaller --add-data "assets;assets" --noconfirm --onefile --windowed --name pomodoro-timer pomodoro.py
 
       - name: 打包快速启动版
-        run: python -m PyInstaller --noconfirm --onedir --windowed --name pomodoro-timer-faststart pomodoro.py
+        run: python -m PyInstaller --add-data "assets;assets" --noconfirm --onedir --windowed --name pomodoro-timer-faststart pomodoro.py
 
       # exe 是 --windowed 打的，控制台里看不到任何输出；用 --selftest 写出的文件确认
       # 它真能启动（通知弹不出来只记在文件里，不算构建失败）
