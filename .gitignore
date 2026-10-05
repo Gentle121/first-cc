@@ -1,0 +1,8 @@
+# ---- PyInstaller 构建产物 ----
+# 这些都可以随时用 打包.bat 重新生成，不必入库（dist/ 里还有 11MB 的 exe）
+build/
+dist/
+
+# ---- Python 缓存 ----
+__pycache__/
+*.py[cod]

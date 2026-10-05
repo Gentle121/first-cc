@@ -1,0 +1,7 @@
+# Windows 批处理必须保持 CRLF。
+# 纯 LF 的 .bat（尤其含中文时）会让 cmd.exe 解析错位、静默失效，
+# 之前 打包.bat 就因此从没真正执行过 PyInstaller。这里锁定换行，避免克隆后复发。
+*.bat text eol=crlf
+
+# 图片按二进制处理，不做任何换行转换
+*.png binary
