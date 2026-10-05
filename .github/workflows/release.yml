@@ -19,7 +19,11 @@ jobs:
       # 开 UTF-8 模式，测试输出和构建日志里的中文才不会把整步跑挂
       PYTHONUTF8: "1"
     steps:
+      # fetch-depth: 0 不能省：默认只抓 1 个提交、且不抓标签，而生成正文要靠
+      # git describe / git log 去查「上一个 v* 标签」和两个标签之间的提交列表。
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
@@ -55,6 +59,13 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path "dist\pomodoro-timer-faststart" -DestinationPath "dist\pomodoro-timer-faststart.zip" -Force
 
+      # 正文由 tools/make_release_notes.py 生成：逐条列出本次的提交，每条都能点进去看
+      # 那次提交的具体改动。不用 gh 的 --generate-notes —— 它只会留一行
+      # "Full Changelog: v1.0.0...v1.1.0"，点进去是一大坨混合 diff，看不出改了什么。
+      # 用 -o 让 Python 自己写文件（UTF-8）：走 shell 重定向会踩控制台编码的坑。
+      - name: 生成 Release 正文
+        run: python tools/make_release_notes.py --to $env:GITHUB_REF_NAME -o dist\release_notes.md
+
       - name: 建 Release 并上传附件
         shell: pwsh
         env:
@@ -62,11 +73,13 @@ jobs:
         run: |
           $tag = $env:GITHUB_REF_NAME
           $assets = @("dist\pomodoro-timer.exe", "dist\pomodoro-timer-faststart.zip")
+          $notes = "dist\release_notes.md"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            # 同名 Release 已存在（重跑或补传），覆盖附件即可
+            # 同名 Release 已存在（重跑或补传），覆盖附件，并把正文刷成最新生成的
             gh release upload $tag $assets --clobber
+            gh release edit $tag --notes-file $notes
           } else {
-            gh release create $tag $assets --title $tag --generate-notes
+            gh release create $tag $assets --title $tag --notes-file $notes
           }
           if ($LASTEXITCODE -ne 0) { throw "创建 Release / 上传附件失败" }

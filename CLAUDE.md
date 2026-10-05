@@ -17,6 +17,7 @@ PowerShell），PyInstaller 只在打包时用到。"不依赖任何第三方包
 | 打包（出两份产物） | 双击 `打包.bat`，或见下面两条 |
 | 打包后自检通知 | `"dist/番茄钟.exe" --selftest`，结果看 `%TEMP%\pomodoro_tk\selftest.txt` |
 | 重生成圆环打底图 | `python tools/make_ring_bg.py`（开发期工具，自己要 Pillow） |
+| 预览发布说明 | `python tools/make_release_notes.py --to v1.1.0`（不加 `--to` 就是「上一个标签→HEAD」） |
 | 发版 | `git tag v1.1.0 && git push origin v1.1.0` |
 
 ```bash
@@ -132,6 +133,13 @@ Python 标准库没有任何弹 WinRT 原生通知的办法（第三方包违背
 
 - **job 级 `PYTHONUTF8: "1"` 不能删**：runner 控制台是 cp1252，测试脚本 `print` 中文会
   `UnicodeEncodeError` 把整步直接跑挂（run 37271669623 就是这么挂的）。
+- **Release 正文由 `tools/make_release_notes.py` 生成**：逐条列出两个标签之间的提交，每条附
+  「查看改动」链接指向那次提交的 diff。**不要**换回 `gh release create --generate-notes`——
+  它只会在正文里留一行 `**Full Changelog**: v1.0.0...v1.1.0`，点进去是一大坨混合 diff，
+  读者看不出这个版本到底改了什么。
+- 配套地 **`actions/checkout` 必须 `fetch-depth: 0`**：默认只抓 1 个提交、且不抓标签，
+  而生成正文要靠 `git describe` 找上一个 `v*` 标签、靠 `git log` 取两个标签之间的提交，
+  浅检出会让它直接落空。
 - 需要 `permissions: contents: write`；改 `.github/workflows/` 下的文件要求推送用的 token
   带 `workflow` scope，否则 push 会被拒。
 - 改了 workflow 只能推个 tag 看真跑，本地没有等价的复现环境。
