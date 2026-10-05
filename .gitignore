@@ -6,3 +6,7 @@ dist/
 # ---- Python 缓存 ----
 __pycache__/
 *.py[cod]
+
+# ---- IDE 配置 ----
+# JetBrains（PyCharm/IDEA）的工程目录，各人机器上的路径和窗口布局都不一样，不入库
+.idea/
