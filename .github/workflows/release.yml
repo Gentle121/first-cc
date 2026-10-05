@@ -72,14 +72,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = $env:GITHUB_REF_NAME
+          # 标题用中文「番茄钟vX.Y.Z」。标题走 API 的 JSON 字段，不受附件名那条
+          # ASCII 限制（附件名非 ASCII 会被 GitHub 静默剥成 default.exe）。
+          $title = "番茄钟$tag"
           $assets = @("dist\pomodoro-timer.exe", "dist\pomodoro-timer-faststart.zip")
           $notes = "dist\release_notes.md"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            # 同名 Release 已存在（重跑或补传），覆盖附件，并把正文刷成最新生成的
+            # 同名 Release 已存在（重跑或补传），覆盖附件，并把标题/正文刷成最新生成的
             gh release upload $tag $assets --clobber
-            gh release edit $tag --notes-file $notes
+            gh release edit $tag --title $title --notes-file $notes
           } else {
-            gh release create $tag $assets --title $tag --notes-file $notes
+            gh release create $tag $assets --title $title --notes-file $notes
           }
           if ($LASTEXITCODE -ne 0) { throw "创建 Release / 上传附件失败" }
