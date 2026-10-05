@@ -3,17 +3,27 @@
 一个纯 Python 标准库写的番茄钟：圆环倒计时 + 系统提示音 + Windows 原生通知。
 不依赖任何第三方包（打包时需要 PyInstaller，运行时不需要）。
 
-## 直接使用
+## 直接使用（不用装 Python）
 
-已经打包好的 exe 在 `dist/` 里，**不需要装 Python**，双击即可：
+到 **[Releases 页面](https://github.com/Gentle121/first-cc/releases/latest)** 下载，双击即可：
 
-| 版本 | 体积 | 启动速度 | 适合 |
+| 文件 | 体积 | 启动速度 | 适合 |
 |---|---|---|---|
-| `dist/番茄钟.exe` | 11 MB 单文件 | 约 2.4 秒 | 发给别人 / 丢 U 盘，就一个文件 |
-| `dist/番茄钟-快速启动/` | 28 MB 文件夹 | 约 0.25 秒 | 自己常用，放桌面/任务栏 |
+| `pomodoro-timer.exe` | 11 MB 单文件 | 约 2.4 秒 | 发给别人 / 丢 U 盘，就一个文件 |
+| `pomodoro-timer-faststart.zip` | 11 MB 压缩包 | 约 0.25 秒 | 自己常用，放桌面/任务栏 |
 
 两者功能完全一样，差别只在于 `--onefile` 每次启动都要把内容解压到临时目录，所以慢。
-**文件夹版要整个目录一起拷贝**，单独把里面的 exe 拿出来是不能用的。
+压缩包解压出来是 `番茄钟-快速启动/` 文件夹，**要整个目录一起留着**，单独把里面的 exe
+拿出来是不能用的。
+
+首次运行若被 Windows SmartScreen 拦下，点「更多信息」→「仍要运行」——exe 没有代码签名
+证书，不是文件有问题。
+
+> 附件名是英文的，因为 GitHub 会剥掉附件名里的非 ASCII 字符（中文名会被吞成
+> `default.exe`）。仓库里自己打包出来的产物仍是中文名 `番茄钟.exe`。
+>
+> `dist/` 里是可随时重新生成的构建产物，**没有入库**，所以克隆下来是没有 exe 的——
+> 要 exe 去 Releases 下，要从源码跑看下一节。
 
 ## 从源码运行
 
@@ -49,6 +59,9 @@ pip install pyinstaller
 python -m PyInstaller --noconfirm --onefile --windowed --name 番茄钟 pomodoro.py
 python -m PyInstaller --noconfirm --onedir  --windowed --name 番茄钟-快速启动 pomodoro.py
 ```
+
+产物在 `dist/`（已被 `.gitignore` 排除，不会进仓库）。改完代码想让别人拿到新的 exe，
+把 `dist/番茄钟.exe` 传到 GitHub Releases 上，附件名得用英文——见上面那段的说明。
 
 ## 测试
 
