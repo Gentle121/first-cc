@@ -10,3 +10,9 @@ __pycache__/
 # ---- IDE 配置 ----
 # JetBrains（PyCharm/IDEA）的工程目录，各人机器上的路径和窗口布局都不一样，不入库
 .idea/
+
+# ---- Claude Code 本地配置 ----
+# .claude/ 里是本地装的 skills（frontend-design / image-gen 这类），只是把作品做出来用的
+# 工具，跟番茄钟本身无关，不入库。
+# 注意别连作品自己的图一起忽略掉：配色方案.png 和 assets/ring_bg.png 是产品的一部分，必须提交。
+.claude/
